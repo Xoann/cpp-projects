@@ -1,7 +1,10 @@
 #include "ball.h"
 #include <raylib.h>
 
-Ball::Ball(int x, int y, int speed_x, int speed_y, int radius) : x(x), y(y), speed_x(speed_x), speed_y(speed_y), radius(radius) {}
+Ball::Ball(int x, int y, int speed_x, int speed_y, int radius) : x(x), y(y), speed_x(speed_x), speed_y(speed_y), radius(radius) {
+  original_speed_x = speed_x;
+  original_speed_y = speed_y;
+}
 
 void Ball::Update() {
   x += speed_x;
@@ -25,6 +28,8 @@ void Ball::ResetBall() {
     y = GetScreenHeight() / 2;
 
     int speed_choices[2] = {-1, 1};
+    speed_x = original_speed_x;
+    speed_y = original_speed_y;
     speed_x *= speed_choices[GetRandomValue(0, 1)];
     speed_y *= speed_choices[GetRandomValue(0, 1)];
 }

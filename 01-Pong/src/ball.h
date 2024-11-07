@@ -10,6 +10,10 @@ class Ball {
     float x, y;
     float speed_x, speed_y;
     int radius;
+  
+  private:
+    float original_speed_x;
+    float original_speed_y;
 };;
 
 class GameBall: public Ball {
