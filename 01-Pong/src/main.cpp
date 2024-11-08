@@ -6,6 +6,8 @@
 #include <vector>
 #include "chaos_items.h"
 
+// TODO: Create temp ball extention to game ball
+// TODO: make cpu paddle follow closest ball
 using namespace std;
 
 Color Green = Color{38, 185, 154, 255};
@@ -119,7 +121,7 @@ void draw_game_field() {
         chaos_item.Draw();
     }
 
-    for (const GameBall* game_ball : balls) {
+    for (GameBall* game_ball : balls) {
         game_ball->Draw();
     }
 
@@ -151,8 +153,6 @@ int handle_playing() {
 
         int random_type = GetRandomValue(0, 2);
 
-        chaos_items.push_back(ChaosItem(GetRandomValue(0, 2), random_position));
-
         chaos_items.emplace_back(random_type, random_position);
     }
 
@@ -164,34 +164,63 @@ int handle_playing() {
     player.Update();
     cpu.Update(ball.y);
 
-    // Check for collisions
-    if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)player.x, (float)player.y, (float)player.width, (float)player.height})) {
-        // Reverse horizontal direction
-        ball.speed_x *= -1;
-
-        // Bounce vertically depending on where the ball hits the paddle
-        if (ball.y < player.y) {
-            ball.speed_y = -abs(ball.speed_y);
-        } else if (ball.y > player.y + player.height) {
-            ball.speed_y = abs(ball.speed_y);
-        }
-
-        PlaySound(hit_sound);
-    }
-
-    if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)cpu.x, (float)cpu.y, (float)cpu.width, (float)cpu.height})) {
+    for (GameBall* game_ball : balls) {
+        if (CheckCollisionCircleRec(Vector2{game_ball->x, game_ball->y}, game_ball->radius, Rectangle{(float)player.x, (float)player.y, (float)player.width, (float)player.height})) {
             // Reverse horizontal direction
-        ball.speed_x *= -1;
+            game_ball->speed_x *= -1;
 
-        // Bounce vertically depending on where the ball hits the paddle
-        if (ball.y < cpu.y) {
-            ball.speed_y = -abs(ball.speed_y);
-        } else if (ball.y > cpu.y + cpu.height) {
-            ball.speed_y = abs(ball.speed_y);
+            // Bounce vertically depending on where the ball hits the paddle
+            if (game_ball->y < player.y) {
+                game_ball->speed_y = -abs(game_ball->speed_y);
+            } else if (game_ball->y > player.y + player.height) {
+                game_ball->speed_y = abs(game_ball->speed_y);
+            }
+
+            PlaySound(hit_sound);
         }
 
-        PlaySound(hit_sound);
+        if (CheckCollisionCircleRec(Vector2{game_ball->x, game_ball->y}, game_ball->radius, Rectangle{(float)cpu.x, (float)cpu.y, (float)cpu.width, (float)cpu.height})) {
+            // Reverse horizontal direction
+            game_ball->speed_x *= -1;
+
+            // Bounce vertically depending on where the ball hits the paddle
+            if (game_ball->y < cpu.y) {
+                game_ball->speed_y = -abs(game_ball->speed_y);
+            } else if (game_ball->y > cpu.y + cpu.height) {
+                game_ball->speed_y = abs(game_ball->speed_y);
+            }
+
+            PlaySound(hit_sound);
+        }
     }
+    // // Check for collisions
+    // if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)player.x, (float)player.y, (float)player.width, (float)player.height})) {
+    //     // Reverse horizontal direction
+    //     ball.speed_x *= -1;
+
+    //     // Bounce vertically depending on where the ball hits the paddle
+    //     if (ball.y < player.y) {
+    //         ball.speed_y = -abs(ball.speed_y);
+    //     } else if (ball.y > player.y + player.height) {
+    //         ball.speed_y = abs(ball.speed_y);
+    //     }
+
+    //     PlaySound(hit_sound);
+    // }
+
+    // if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)cpu.x, (float)cpu.y, (float)cpu.width, (float)cpu.height})) {
+    //         // Reverse horizontal direction
+    //     ball.speed_x *= -1;
+
+    //     // Bounce vertically depending on where the ball hits the paddle
+    //     if (ball.y < cpu.y) {
+    //         ball.speed_y = -abs(ball.speed_y);
+    //     } else if (ball.y > cpu.y + cpu.height) {
+    //         ball.speed_y = abs(ball.speed_y);
+    //     }
+
+    //     PlaySound(hit_sound);
+    // }
 
     // Check for chaos item collisions
     for (std::vector<ChaosItem>::size_type i = 0; i < chaos_items.size(); i++) {
