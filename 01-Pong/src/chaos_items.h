@@ -9,7 +9,7 @@ class ChaosItem {
   public:
     ChaosItem(int type, Vector2 position);
     void Draw() const;
-    void ApplyEffect(Paddle* player, Paddle* cpu, GameBall* ball, std::vector<GameBall*>& balls);
+    void ApplyEffect(Paddle* player, Paddle* cpu, GameBall* ball, std::vector<TempBall*>& balls);
 
     int type;
     Vector2 position;

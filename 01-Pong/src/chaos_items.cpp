@@ -12,15 +12,15 @@ ChaosItem::ChaosItem(int type, Vector2 position)
             break;
         case 1:
             color = BLUE;
-            radius = 150;
+            radius = 100;
             break;
         case 2:
             color = GREEN;
-            radius = 200;
+            radius = 100;
             break;
         case 3:
             color = RED;
-            radius = 250;
+            radius = 100;
             break;
     }
 }
@@ -29,7 +29,7 @@ void ChaosItem::Draw() const {
     DrawCircleV(position, radius, color);
 }
 
-void ChaosItem::ApplyEffect(Paddle* player, Paddle* cpu, GameBall* ball, std::vector<GameBall*>& balls) {
+void ChaosItem::ApplyEffect(Paddle* player, Paddle* cpu, GameBall* ball, std::vector<TempBall*>& balls) {
     switch (type) {
         case 0: {
             // Increase ball speed
@@ -38,9 +38,8 @@ void ChaosItem::ApplyEffect(Paddle* player, Paddle* cpu, GameBall* ball, std::ve
             break;
         }
         case 1: {
-
             // Create extra ball
-            GameBall* newBall = new GameBall(*ball);
+            TempBall* newBall = new TempBall(ball->x, ball->y, ball->speed_x, ball->speed_y, ball->radius);
             newBall->speed_x *= -1; // Reverse the direction of the new ball
             balls.push_back(newBall);
             break;

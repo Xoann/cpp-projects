@@ -6,8 +6,6 @@
 #include <vector>
 #include "chaos_items.h"
 
-// TODO: Create temp ball extention to game ball
-// TODO: make cpu paddle follow closest ball
 using namespace std;
 
 Color Green = Color{38, 185, 154, 255};
@@ -39,7 +37,7 @@ const int button_font_size = 40;
 const float button_roundedness = 0.1;
 
 // Game objects
-std::vector<GameBall*> balls;
+std::vector<TempBall*> balls;
 GameBall ball(screen_width / 2, screen_height / 2, ball_speed, ball_speed, ball_radius);
 
 Paddle player(paddle_offset, screen_height / 2 - paddle_height / 2, paddle_width, paddle_height, paddle_speed);
@@ -55,12 +53,13 @@ Sound game_leave_sound;
 Sound game_start_sound;
 Sound lose_sound;
 
+float sfx_volume = 1.0f;
+
 // Buttons
 Button back_button(20, 20, button_width / 2, button_height / 2, "Back", button_font_size / 2, button_roundedness, &click_sound, &hover_sound);
 
 // Menu buttons
 Button play_button(screen_width / 2 - 100, screen_height / 2 - 50, button_width, button_height, "Play", button_font_size, button_roundedness, &click_sound, &hover_sound);
-Button settings_button(screen_width / 2 - 100, screen_height / 2 + 80, button_width, button_height, "Settings", button_font_size, button_roundedness, &click_sound, &hover_sound);
 
 // Game over buttons
 Button replay_button(screen_width / 2 - 100, screen_height / 2 - 50, button_width, button_height, "Replay", button_font_size, button_roundedness, &game_start_sound, &hover_sound);
@@ -75,12 +74,16 @@ Button arcade_mode_button(screen_width / 2 - 100, screen_height / 3 + 125, butto
 
 bool window_open;
 
+// Intermission timer
+float intermission_timer = 0.0f;
+float intermission_duration = 3.0f;
+
 enum class GameState {
     MENU,
+    INTERMISSION,
     PLAYING,
     PAUSED,
     GAME_OVER,
-    SETTINGS,
     MODE_SELECT
 };
 
@@ -95,11 +98,14 @@ GameMode game_mode = GameMode::CLASSIC;
 // Chaos items
 std::vector<ChaosItem> chaos_items;
 float chaos_item_spawn_timer = 0.0f;
-float chaos_item_spawn_interval = 3.0f;
+float chaos_item_spawn_interval = 5.0f;
 
 void reset_game() {
     balls.clear();
-    balls.push_back(&ball);
+    chaos_items.clear();
+    cpu.ResetPaddle();
+    player.ResetPaddle();
+    intermission_timer = 0.0f;
     player_score = 0;
     cpu_score = 0;
     ball.ResetBall();
@@ -112,21 +118,23 @@ void draw_game_field() {
     DrawCircle(screen_width / 2, screen_height / 2, 150, Light_Green);
     DrawLine(screen_width / 2, 0, screen_width / 2, screen_height, WHITE);
 
-    // Scores
-    DrawText(TextFormat("%i", player_score), screen_width / 4 - 20, 20, 80, WHITE);
-    DrawText(TextFormat("%i", cpu_score), 3 * screen_width / 4 - 20, 20, 80, WHITE);
 
     // Game objects
     for (const ChaosItem& chaos_item : chaos_items) {
         chaos_item.Draw();
     }
 
-    for (GameBall* game_ball : balls) {
+    for (TempBall* game_ball : balls) {
         game_ball->Draw();
     }
 
+    ball.Draw();
     player.Draw();
     cpu.Draw();
+
+    // Scores
+    DrawText(TextFormat("%i", player_score), screen_width / 4 - 20, 20, 80, WHITE);
+    DrawText(TextFormat("%i", cpu_score), 3 * screen_width / 4 - 20, 20, 80, WHITE);
 }
 
 int handle_playing() {
@@ -143,90 +151,101 @@ int handle_playing() {
         game_state = GameState::GAME_OVER;
     }
 
-    // Spawn chaos items
-    chaos_item_spawn_timer += GetFrameTime();
+    if (game_mode == GameMode::ARCADE) {
+        // Spawn chaos items
+        chaos_item_spawn_timer += GetFrameTime();
 
-    if (chaos_item_spawn_timer >= chaos_item_spawn_interval) {
-        chaos_item_spawn_timer = 0.0f;
+        if (chaos_item_spawn_timer >= chaos_item_spawn_interval) {
+            chaos_item_spawn_timer = 0.0f;
 
-        Vector2 random_position = Vector2{(float)GetRandomValue(40, screen_width - 40), (float)GetRandomValue(40, screen_height - 40)};
+            Vector2 random_position = Vector2{(float)GetRandomValue(40, screen_width - 40), (float)GetRandomValue(40, screen_height - 40)};
 
-        int random_type = GetRandomValue(0, 2);
+            int random_type = GetRandomValue(0, 3);
 
-        chaos_items.emplace_back(random_type, random_position);
+            chaos_items.emplace_back(random_type, random_position);
+        }
+
+        // Update
+        for (std::vector<TempBall*>::size_type i = 0; i < balls.size(); i++) {
+            (*balls[i]).Update(&player_score, &cpu_score, balls);
+        }
     }
 
     // Update
-    for (std::vector<GameBall*>::size_type i = 0; i < balls.size(); i++) {
-        (*balls[i]).Update(&player_score, &cpu_score);
+    if (ball.Update(&player_score, &cpu_score)) {
+        game_state = GameState::INTERMISSION;
     }
-
     player.Update();
-    cpu.Update(ball.y);
+    cpu.Update(ball, balls);
 
-    for (GameBall* game_ball : balls) {
-        if (CheckCollisionCircleRec(Vector2{game_ball->x, game_ball->y}, game_ball->radius, Rectangle{(float)player.x, (float)player.y, (float)player.width, (float)player.height})) {
-            // Reverse horizontal direction
-            game_ball->speed_x *= -1;
+    if (game_mode == GameMode::ARCADE) {
+        for (TempBall* game_ball : balls) {
+            if (CheckCollisionCircleRec(Vector2{game_ball->x, game_ball->y}, game_ball->radius, Rectangle{(float)player.x, (float)player.y, (float)player.width, (float)player.height})) {
+                // Reverse horizontal direction
+                game_ball->speed_x *= -1;
 
-            // Bounce vertically depending on where the ball hits the paddle
-            if (game_ball->y < player.y) {
-                game_ball->speed_y = -abs(game_ball->speed_y);
-            } else if (game_ball->y > player.y + player.height) {
-                game_ball->speed_y = abs(game_ball->speed_y);
+                // Bounce vertically depending on where the ball hits the paddle
+                if (game_ball->y < player.y) {
+                    game_ball->speed_y = -abs(game_ball->speed_y);
+                } else if (game_ball->y > player.y + player.height) {
+                    game_ball->speed_y = abs(game_ball->speed_y);
+                }
+
+                PlaySound(hit_sound);
             }
 
-            PlaySound(hit_sound);
-        }
+            if (CheckCollisionCircleRec(Vector2{game_ball->x, game_ball->y}, game_ball->radius, Rectangle{(float)cpu.x, (float)cpu.y, (float)cpu.width, (float)cpu.height})) {
+                // Reverse horizontal direction
+                game_ball->speed_x *= -1;
 
-        if (CheckCollisionCircleRec(Vector2{game_ball->x, game_ball->y}, game_ball->radius, Rectangle{(float)cpu.x, (float)cpu.y, (float)cpu.width, (float)cpu.height})) {
-            // Reverse horizontal direction
-            game_ball->speed_x *= -1;
+                // Bounce vertically depending on where the ball hits the paddle
+                if (game_ball->y < cpu.y) {
+                    game_ball->speed_y = -abs(game_ball->speed_y);
+                } else if (game_ball->y > cpu.y + cpu.height) {
+                    game_ball->speed_y = abs(game_ball->speed_y);
+                }
 
-            // Bounce vertically depending on where the ball hits the paddle
-            if (game_ball->y < cpu.y) {
-                game_ball->speed_y = -abs(game_ball->speed_y);
-            } else if (game_ball->y > cpu.y + cpu.height) {
-                game_ball->speed_y = abs(game_ball->speed_y);
+                PlaySound(hit_sound);
             }
-
-            PlaySound(hit_sound);
         }
     }
-    // // Check for collisions
-    // if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)player.x, (float)player.y, (float)player.width, (float)player.height})) {
-    //     // Reverse horizontal direction
-    //     ball.speed_x *= -1;
 
-    //     // Bounce vertically depending on where the ball hits the paddle
-    //     if (ball.y < player.y) {
-    //         ball.speed_y = -abs(ball.speed_y);
-    //     } else if (ball.y > player.y + player.height) {
-    //         ball.speed_y = abs(ball.speed_y);
-    //     }
+    // Check for collisions with regular ball
+    if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)player.x, (float)player.y, (float)player.width, (float)player.height})) {
+        // Reverse horizontal direction
+        ball.speed_x *= -1;
 
-    //     PlaySound(hit_sound);
-    // }
+        // Bounce vertically depending on where the ball hits the paddle
+        if (ball.y < player.y) {
+            ball.speed_y = -abs(ball.speed_y);
+        } else if (ball.y > player.y + player.height) {
+            ball.speed_y = abs(ball.speed_y);
+        }
 
-    // if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)cpu.x, (float)cpu.y, (float)cpu.width, (float)cpu.height})) {
-    //         // Reverse horizontal direction
-    //     ball.speed_x *= -1;
+        PlaySound(hit_sound);
+    }
 
-    //     // Bounce vertically depending on where the ball hits the paddle
-    //     if (ball.y < cpu.y) {
-    //         ball.speed_y = -abs(ball.speed_y);
-    //     } else if (ball.y > cpu.y + cpu.height) {
-    //         ball.speed_y = abs(ball.speed_y);
-    //     }
+    if (CheckCollisionCircleRec(Vector2{ball.x, ball.y}, ball.radius, Rectangle{(float)cpu.x, (float)cpu.y, (float)cpu.width, (float)cpu.height})) {
+            // Reverse horizontal direction
+        ball.speed_x *= -1;
 
-    //     PlaySound(hit_sound);
-    // }
+        // Bounce vertically depending on where the ball hits the paddle
+        if (ball.y < cpu.y) {
+            ball.speed_y = -abs(ball.speed_y);
+        } else if (ball.y > cpu.y + cpu.height) {
+            ball.speed_y = abs(ball.speed_y);
+        }
 
-    // Check for chaos item collisions
-    for (std::vector<ChaosItem>::size_type i = 0; i < chaos_items.size(); i++) {
-        if (CheckCollisionCircles(Vector2{ball.x, ball.y}, ball.radius, chaos_items[i].position, chaos_items[i].radius)) {
-            chaos_items[i].ApplyEffect(&player, &cpu, &ball, balls);
-            chaos_items.erase(chaos_items.begin() + i);
+        PlaySound(hit_sound);
+    }
+
+    if (game_mode == GameMode::ARCADE) {
+        // Check for chaos item collisions
+        for (std::vector<ChaosItem>::size_type i = 0; i < chaos_items.size(); i++) {
+            if (CheckCollisionCircles(Vector2{ball.x, ball.y}, ball.radius, chaos_items[i].position, chaos_items[i].radius)) {
+                chaos_items[i].ApplyEffect(&player, &cpu, &ball, balls);
+                chaos_items.erase(chaos_items.begin() + i);
+            }
         }
     }
 
@@ -234,6 +253,35 @@ int handle_playing() {
     draw_game_field();
 
     return 0;
+}
+
+void handle_intermission() {
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        game_state = GameState::PAUSED;
+        EndDrawing();
+    }
+
+    intermission_timer += GetFrameTime();
+
+    if (intermission_timer >= intermission_duration) {
+        intermission_timer = 0.0f;
+        game_state = GameState::PLAYING;
+    }
+    
+    player.Update();
+    cpu.Update(ball, balls);
+
+    draw_game_field();
+
+    // Draw intermission text
+    int text_height = 30;
+    int box_padding = 10;
+    int remaining_seconds = static_cast<int>(intermission_duration - intermission_timer);
+    int text_width = MeasureText(TextFormat("Starting in %i", remaining_seconds), 20);
+
+    DrawRectangleRounded(Rectangle{(float)screen_width / 2 - text_width / 2 - box_padding, (float)screen_height / 2 - text_height / 2 - box_padding - 100, (float)text_width + 2 * box_padding, (float)text_height + 2 * box_padding}, 0.1, 0, Fade(BLACK, 0.5f));
+    DrawText(TextFormat("Starting in %i", remaining_seconds), screen_width / 2 - text_width / 2, screen_height / 2 - text_height / 2 - 100, 20, WHITE);
+
 }
 
 void handle_menu() {
@@ -247,9 +295,7 @@ void handle_menu() {
 
     DrawText("Pong", screen_width / 2 - MeasureText("Pong", 60) / 2, screen_height / 4 - 30, 60, WHITE);
 
-    if (settings_button.Draw(Green, Light_Green, YELLOW)) {
-        game_state = GameState::SETTINGS;
-    }
+    
 
     if (play_button.Draw(Green, Light_Green, YELLOW)) {
         reset_game();
@@ -259,7 +305,11 @@ void handle_menu() {
 
 void handle_paused() {
     if (IsKeyPressed(KEY_ESCAPE)) {
-        game_state = GameState::PLAYING;
+        if (intermission_timer > 0.0f) {
+            game_state = GameState::INTERMISSION;
+        } else {
+            game_state = GameState::PLAYING;
+        }
     }
 
     draw_game_field();
@@ -295,15 +345,6 @@ void handle_game_over() {
     }
 }
 
-void handle_settings() {
-    ClearBackground(Dark_Green);
-
-    DrawText("Settings", screen_width / 2 - MeasureText("Settings", 60) / 2, screen_height / 4 - 30, 60, WHITE);
-    if (back_button.Draw(Green, Light_Green, WHITE)) {
-        game_state = GameState::MENU;
-    }
-}
-
 void handle_mode_select() {
     ClearBackground(Dark_Green);
 
@@ -314,13 +355,22 @@ void handle_mode_select() {
 
     if (classic_mode_button.Draw(Green, Light_Green, YELLOW)) {
         game_mode = GameMode::CLASSIC;
-        game_state = GameState::PLAYING;
+        game_state = GameState::INTERMISSION;
     }
 
     if (arcade_mode_button.Draw(Green, Light_Green, YELLOW)) {
         game_mode = GameMode::ARCADE;
-        game_state = GameState::PLAYING;
+        game_state = GameState::INTERMISSION;
     }
+}
+
+void set_volume() {
+    SetSoundVolume(hit_sound, 1.0f * sfx_volume);
+    SetSoundVolume(click_sound, 0.5f * sfx_volume);
+    SetSoundVolume(hover_sound, 0.5f * sfx_volume);
+    SetSoundVolume(game_leave_sound, 0.2f * sfx_volume);
+    SetSoundVolume(game_start_sound, 0.2f * sfx_volume);
+    SetSoundVolume(lose_sound, 0.5f * sfx_volume);
 }
 
 int main() 
@@ -333,19 +383,14 @@ int main()
 
     // Load sounds
     InitAudioDevice();
-    hit_sound = LoadSound("./assets/hit.wav");
+    hit_sound = LoadSound("./assets/hit.ogg");
     click_sound = LoadSound("./assets/click.ogg");
     hover_sound = LoadSound("./assets/hover.ogg");
     game_leave_sound = LoadSound("./assets/game_leave.ogg");
     game_start_sound = LoadSound("./assets/game_start.ogg");
     lose_sound = LoadSound("./assets/lose.ogg");
 
-    SetSoundVolume(hit_sound, 0.1f);
-    SetSoundVolume(click_sound, 0.5f);
-    SetSoundVolume(hover_sound, 0.5f);
-    SetSoundVolume(game_leave_sound, 0.2f);
-    SetSoundVolume(game_start_sound, 0.2f);
-    SetSoundVolume(lose_sound, 0.5f);
+    set_volume();
 
     while (!WindowShouldClose()) {
         BeginDrawing();
@@ -358,14 +403,14 @@ int main()
             case GameState::PLAYING:
                 handle_playing();
                 break;
+            case GameState::INTERMISSION:
+                handle_intermission();
+                break;
             case GameState::PAUSED:
                 handle_paused();
                 break;
             case GameState::GAME_OVER:
                 handle_game_over();
-                break;
-            case GameState::SETTINGS:
-                handle_settings();
                 break;
             case GameState::MODE_SELECT:
                 handle_mode_select();

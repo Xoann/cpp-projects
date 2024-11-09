@@ -1,7 +1,10 @@
 #include "paddle.h"
 #include <raylib.h>
 
-Paddle::Paddle(int x, int y, int width, int height, int speed) : x(x), y(y), width(width), height(height), speed(speed) {}
+Paddle::Paddle(int x, int y, int width, int height, int speed) : x(x), y(y), width(width), height(height), speed(speed) {
+    original_paddle_width = width;
+    original_paddle_height = height;
+}
 
 void Paddle::LimitMovement() {
     if (y <= 0) {
@@ -29,11 +32,29 @@ void Paddle::Draw() const {
 
 void Paddle::ResetPaddle() {
     y = GetScreenHeight() / 2 - height / 2;
+    width = original_paddle_width;
+    height = original_paddle_height;
 }
 
 CpuPaddle::CpuPaddle(int x, int y, int width, int height, int speed) : Paddle(x, y, width, height, speed) {}
 
-void CpuPaddle::Update(int ball_y) {
+void CpuPaddle::Update(GameBall game_ball, std::vector<TempBall*>& balls) {
+    float ball_y = game_ball.y;
+
+    // Get either the closest ball with positive x speed
+    // or the farthest ball with negative x speed
+    for (TempBall* ball : balls) {
+        if (ball->speed_x > 0) {
+            if (ball->x > game_ball.x) {
+                ball_y = ball->y;
+            }
+        } else {
+            if (ball->x < game_ball.x) {
+                ball_y = ball->y;
+            }
+        }
+    }
+
     if (y + height / 2 < ball_y) {
         y += speed;
     }

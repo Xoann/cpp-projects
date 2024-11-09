@@ -1,5 +1,8 @@
 #pragma once
 
+#include "ball.h"
+#include <vector>
+
 class Paddle {
   protected:
   void LimitMovement();
@@ -13,10 +16,14 @@ class Paddle {
     int x, y;
     int width, height;
     int speed;
+
+  private:
+    float original_paddle_width;
+    float original_paddle_height;
 };
 
 class CpuPaddle: public Paddle {
   public:
     CpuPaddle(int x, int y, int width, int height, int speed);
-    void Update(int ball_y);
+    void Update(GameBall game_ball, std::vector<TempBall*>& balls);
 };
